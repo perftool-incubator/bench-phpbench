@@ -1,0 +1,69 @@
+{
+  "workshop": {
+    "schema": {
+      "version": "2020.03.02"
+    }
+  },
+  "userenvs": [
+    {
+      "name": "alma9",
+      "requirements": [
+        "phpbench_runtime_packages",
+        "phpbench_build_files",
+        "phpbench_upstream_source"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "name": "phpbench_runtime_packages",
+      "type": "distro",
+      "distro_info": {
+        "packages": [
+          "coreutils",
+          "patch",
+          "php-cli",
+          "python3",
+          "rpm",
+          "tar",
+          "gzip"
+        ]
+      }
+    },
+    {
+      "name": "phpbench_build_files",
+      "type": "files",
+      "files_info": {
+        "files": [
+          {
+            "src": "%bench-dir%/phpbench-build.py",
+            "dst": "/tmp/phpbench-build.py"
+          },
+          {
+            "src": "%bench-dir%/phpbench_common.py",
+            "dst": "/tmp/phpbench_common.py"
+          },
+          {
+            "src": "%bench-dir%/third-party/phpbench-0.8.1-pts-compat.patch",
+            "dst": "/tmp/phpbench-0.8.1-pts-compat.patch"
+          }
+        ]
+      }
+    },
+    {
+      "name": "phpbench_upstream_source",
+      "type": "source",
+      "source_info": {
+        "url": "https://ftp.ntu.edu.tw/pure-ftpd/misc/phpbench/phpbench-0.8.1.tar.gz",
+        "filename": "phpbench-0.8.1.tar.gz",
+        "commands": {
+          "unpack": "python3 /tmp/phpbench-build.py --safe-unpack --archive /opt/phpbench-0.8.1.tar.gz --source-dir /opt/phpbench-0.8.1",
+          "get_dir": "echo phpbench-0.8.1",
+          "commands": [
+            "python3 /tmp/phpbench-build.py --archive /opt/phpbench-0.8.1.tar.gz --source-dir /opt/phpbench-0.8.1 --patch /tmp/phpbench-0.8.1-pts-compat.patch"
+          ]
+        }
+      }
+    }
+  ]
+}

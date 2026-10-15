@@ -1,0 +1,29 @@
+{
+  "rickshaw-benchmark": {
+    "schema": {
+      "version": "2020.05.18"
+    }
+  },
+  "benchmark": "phpbench",
+  "controller": {
+    "post-script": "%bench-dir%/phpbench-post-process.py"
+  },
+  "client": {
+    "files-from-controller": [
+      {
+        "src": "%bench-dir%/phpbench_common.py",
+        "dest": "/usr/bin/"
+      },
+      {
+        "src": "%bench-dir%/phpbench-get-runtime",
+        "dest": "/usr/bin/"
+      },
+      {
+        "src": "%bench-dir%/phpbench-client",
+        "dest": "/usr/bin/"
+      }
+    ],
+    "runtime": "phpbench-get-runtime",
+    "start": "phpbench-client"
+  }
+}

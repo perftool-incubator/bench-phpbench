@@ -1,0 +1,22 @@
+{
+  "presets": {
+    "defaults": [
+      {
+        "arg": "iterations",
+        "role": "client",
+        "vals": [
+          "2000000"
+        ]
+      }
+    ]
+  },
+  "validations": {
+    "phpbench_iterations": {
+      "description": "native PHPBench iterations from 50 through 10000000",
+      "args": [
+        "iterations"
+      ],
+      "vals": "^(5[0-9]|[6-9][0-9]|[1-9][0-9]{2,6}|10000000)$"
+    }
+  }
+}

@@ -1,0 +1,466 @@
+#!/usr/bin/env python3
+# -*- mode: python; indent-tabs-mode: nil; python-indent-level: 4 -*-
+# vim: autoindent tabstop=4 shiftwidth=4 expandtab softtabstop=4 filetype=python
+
+"""Run and validate one native PHPBench 0.8.1 sample."""
+
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from phpbench_common import (
+    BENCHMARK,
+    INSTALL_ROOT,
+    SOURCE_SHA256,
+    PROCESS_CLEANUP_RESERVE_SECONDS,
+    client_deadline_seconds,
+    expected_runtime_seconds,
+    load_build_manifest,
+    parse_native_output,
+    parse_parameters,
+    sanitized_php_environment,
+    sha256_file,
+)
+
+
+OUTPUT = Path("phpbench-output.txt")
+STDERR = Path("phpbench-stderr.txt")
+MANIFEST = Path("phpbench-run-manifest.json")
+ERROR = Path("phpbench-error.txt")
+ACTIVE_PROCESS = None
+INTERRUPTED_BY = None
+LAUNCH_IN_PROGRESS = False
+PENDING_LAUNCH_SIGNAL = None
+FINALIZATION_IN_PROGRESS = False
+PROCESS_GROUP_TERM_GRACE_SECONDS = 5
+PROCESS_GROUP_KILL_GRACE_SECONDS = 5
+PROCESS_OUTPUT_DRAIN_SECONDS = 2
+
+
+class RunInterrupted(Exception):
+    """Raised after Crucible asks the benchmark client to stop."""
+
+
+def atomic_json(path, value):
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+
+
+def process_group_has_live_members(pgid):
+    """Check Linux process-group members, excluding inert zombie entries."""
+    proc = Path("/proc")
+    try:
+        entries = list(proc.iterdir())
+    except OSError:
+        entries = None
+    if entries is not None:
+        inspected = False
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                stat = (entry / "stat").read_text(encoding="ascii")
+            except (OSError, UnicodeError):
+                continue
+            closing = stat.rfind(")")
+            if closing < 0:
+                continue
+            fields = stat[closing + 2 :].split()
+            if len(fields) < 3:
+                continue
+            inspected = True
+            try:
+                state = fields[0]
+                process_group = int(fields[2])
+            except ValueError:
+                continue
+            if process_group == pgid and state not in ("Z", "X"):
+                return True
+        if inspected:
+            return False
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _wait_for_process_group_exit(process, timeout, deadline_monotonic=None):
+    end = time.monotonic() + max(0, timeout)
+    if deadline_monotonic is not None:
+        end = min(end, deadline_monotonic)
+    while process_group_has_live_members(process.pid):
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            return False
+        if process.poll() is None:
+            try:
+                process.wait(timeout=min(0.05, remaining))
+            except subprocess.TimeoutExpired:
+                pass
+        else:
+            time.sleep(min(0.05, remaining))
+    if process.poll() is None:
+        try:
+            process.wait(timeout=max(0.01, end - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            return False
+    return True
+
+
+def terminate_process_group(process, deadline_monotonic=None):
+    """Stop the owned session and descendants even if its leader already exited."""
+    if process is None:
+        return True
+    if process_group_has_live_members(process.pid):
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        if not _wait_for_process_group_exit(
+            process, PROCESS_GROUP_TERM_GRACE_SECONDS, deadline_monotonic
+        ):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            if not _wait_for_process_group_exit(
+                process, PROCESS_GROUP_KILL_GRACE_SECONDS, deadline_monotonic
+            ):
+                return False
+    if process.poll() is None:
+        try:
+            remaining = 5
+            if deadline_monotonic is not None:
+                remaining = min(remaining, max(0.01, deadline_monotonic - time.monotonic()))
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            return False
+    return not process_group_has_live_members(process.pid)
+
+
+def start_owned_process(command, cwd, environment):
+    """Queue stop signals until Popen's new session is registered for cleanup."""
+    global ACTIVE_PROCESS, LAUNCH_IN_PROGRESS, PENDING_LAUNCH_SIGNAL
+    if ACTIVE_PROCESS is not None or LAUNCH_IN_PROGRESS:
+        raise RuntimeError("A PHPBench process launch is already active")
+    PENDING_LAUNCH_SIGNAL = None
+    LAUNCH_IN_PROGRESS = True
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            start_new_session=True,
+            env=environment,
+        )
+        ACTIVE_PROCESS = process
+    finally:
+        LAUNCH_IN_PROGRESS = False
+    pending_signal = PENDING_LAUNCH_SIGNAL
+    PENDING_LAUNCH_SIGNAL = None
+    if pending_signal is not None:
+        raise RunInterrupted("PHPBench client received signal %s during process launch" % pending_signal)
+    return process
+
+
+def communicate_owned_process(process, timeout, cleanup_deadline_monotonic=None):
+    """Return captured diagnostics after a bounded timeout and group shutdown."""
+    try:
+        return process.communicate(timeout=timeout), False
+    except subprocess.TimeoutExpired:
+        if not terminate_process_group(process, cleanup_deadline_monotonic):
+            raise RuntimeError("PHPBench process group survived timeout cleanup")
+        try:
+            output = process.communicate(timeout=PROCESS_OUTPUT_DRAIN_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("PHPBench output pipes remained open after timeout") from exc
+        return output, True
+
+
+def handle_signal(signum, _frame):
+    global INTERRUPTED_BY, PENDING_LAUNCH_SIGNAL
+    if INTERRUPTED_BY is None:
+        INTERRUPTED_BY = signum
+    if LAUNCH_IN_PROGRESS:
+        PENDING_LAUNCH_SIGNAL = signum
+        return
+    if FINALIZATION_IN_PROGRESS:
+        return
+    raise RunInterrupted("PHPBench client received signal %s" % signum)
+
+
+def atomic_text(path, value):
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(value, encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def main(argv):
+    global ACTIVE_PROCESS, FINALIZATION_IN_PROGRESS, INTERRUPTED_BY
+    client_start_monotonic = time.monotonic()
+    if ACTIVE_PROCESS is not None or FINALIZATION_IN_PROGRESS:
+        raise RuntimeError("A previous PHPBench process is still registered")
+    INTERRUPTED_BY = None
+    OUTPUT.unlink(missing_ok=True)
+    STDERR.unlink(missing_ok=True)
+    MANIFEST.unlink(missing_ok=True)
+    ERROR.unlink(missing_ok=True)
+
+    try:
+        parameters = parse_parameters(argv)
+    except Exception as exc:
+        atomic_text(ERROR, str(exc) + "\n")
+        print("PHPBench benchmark failed: %s" % exc, file=sys.stderr)
+        return 1
+
+    manifest = {
+        "format_version": 2,
+        "benchmark": BENCHMARK,
+        "status": "invalid",
+        "source_archive_sha256": SOURCE_SHA256,
+        "parameters": parameters,
+    }
+    stdout_text = ""
+    stderr_text = ""
+    process = None
+    process_return_code = None
+    timed_out = False
+    launch_begin_epoch_ns = None
+    launch_begin_monotonic_ns = None
+    completion_epoch_ns = None
+    completion_monotonic_ns = None
+    cleanup_completed_epoch_ns = None
+    cleanup_completed_monotonic_ns = None
+    expected_seconds = None
+    total_deadline_seconds = None
+    process_wait_timeout_seconds = None
+    client_deadline_monotonic = None
+    work_deadline_monotonic = None
+    process_metadata = {}
+    error_message = None
+    try:
+        expected_seconds = expected_runtime_seconds(parameters["iterations"])
+        total_deadline_seconds = client_deadline_seconds(parameters["iterations"])
+        client_deadline_monotonic = client_start_monotonic + total_deadline_seconds
+        work_deadline_monotonic = (
+            client_deadline_monotonic - PROCESS_CLEANUP_RESERVE_SECONDS
+        )
+        environment = sanitized_php_environment()
+        build = load_build_manifest(environment, work_deadline_monotonic)
+        php_binary = build["php"]["binary"]
+        command = [php_binary, "phpbench.php", "-i", str(parameters["iterations"])]
+        if time.monotonic() >= work_deadline_monotonic:
+            raise TimeoutError("PHPBench preflight exhausted the native-work deadline")
+        launch_begin_epoch_ns = time.time_ns()
+        launch_begin_monotonic_ns = time.monotonic_ns()
+        process = start_owned_process(command, INSTALL_ROOT, environment)
+        owner = process if process is not None else ACTIVE_PROCESS
+        remaining_work_seconds = work_deadline_monotonic - time.monotonic()
+        if remaining_work_seconds <= 0:
+            timed_out = True
+            raise TimeoutError("PHPBench preflight left no native-work time")
+        process_wait_timeout_seconds = remaining_work_seconds
+        (stdout_text, stderr_text), timed_out = communicate_owned_process(
+            owner, process_wait_timeout_seconds, client_deadline_monotonic
+        )
+        if timed_out:
+            raise TimeoutError(
+                "PHPBench exceeded its %.1f second native-work wait budget"
+                % process_wait_timeout_seconds
+            )
+
+        process_return_code = owner.returncode
+        completion_monotonic_ns = time.monotonic_ns()
+        completion_epoch_ns = time.time_ns()
+        if time.monotonic() >= work_deadline_monotonic:
+            timed_out = True
+            raise TimeoutError("PHPBench validation exceeded the native-work deadline")
+        if owner.returncode != 0:
+            raise RuntimeError("PHPBench exited with status %s" % owner.returncode)
+        native = parse_native_output(
+            stdout_text,
+            parameters["iterations"],
+            build["test_names"],
+        )
+        if time.monotonic() >= work_deadline_monotonic:
+            timed_out = True
+            raise TimeoutError("PHPBench native-output validation exceeded its work deadline")
+        if native["php_version"] != build["php"]["version"]:
+            raise RuntimeError("PHPBench output reports a different PHP runtime")
+
+        manifest.update(
+            {
+                "status": "valid",
+                "source": build["source"],
+                "profile_compatibility": build["profile_compatibility"],
+                "build_provenance": {
+                    "architecture": build["architecture"],
+                    "install_root": build["install_root"],
+                    "php": build["php"],
+                    "test_count": build["test_count"],
+                    "test_names": build["test_names"],
+                    "file_sha256": build["file_sha256"],
+                },
+                "effective_parameters": parameters,
+                "native_command": command,
+                "native_result": native,
+                "stdout_sha256": None,
+                "stderr_sha256": None,
+            }
+        )
+    except RunInterrupted as exc:
+        error_message = str(exc)
+    except Exception as exc:
+        error_message = str(exc)
+        if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)):
+            timed_out = True
+    finally:
+        FINALIZATION_IN_PROGRESS = True
+        owner = process if process is not None else ACTIVE_PROCESS
+        process_group_stopped = True
+        cleanup_error = None
+        if owner is not None:
+            try:
+                process_group_stopped = terminate_process_group(
+                    owner, client_deadline_monotonic
+                )
+                process_return_code = owner.poll()
+                drain_timeout = PROCESS_OUTPUT_DRAIN_SECONDS
+                if client_deadline_monotonic is not None:
+                    drain_timeout = min(
+                        drain_timeout,
+                        max(0.01, client_deadline_monotonic - time.monotonic()),
+                    )
+                try:
+                    stdout_text, stderr_text = owner.communicate(timeout=drain_timeout)
+                except subprocess.TimeoutExpired:
+                    process_group_stopped = False
+                    cleanup_error = "PHPBench process output pipes did not close after cleanup"
+            except Exception as exc:
+                process_group_stopped = False
+                cleanup_error = "PHPBench process-group cleanup failed: %s" % exc
+            if not process_group_stopped and cleanup_error is None:
+                cleanup_error = "PHPBench process group remained live after SIGKILL"
+            if process_group_stopped:
+                ACTIVE_PROCESS = None
+            else:
+                ACTIVE_PROCESS = owner
+        if cleanup_error is not None:
+            error_message = (
+                cleanup_error
+                if error_message is None
+                else error_message + "; " + cleanup_error
+            )
+        if launch_begin_monotonic_ns is not None and completion_monotonic_ns is None:
+            cleanup_completed_monotonic_ns = time.monotonic_ns()
+            cleanup_completed_epoch_ns = time.time_ns()
+        if owner is not None and process_return_code is None:
+            process_return_code = owner.poll()
+        process_metadata = {
+            "return_code": process_return_code,
+            "timed_out": timed_out,
+            "interrupted": INTERRUPTED_BY is not None,
+            "signal": INTERRUPTED_BY,
+            "expected_runtime_seconds": expected_seconds,
+            "client_deadline_seconds": total_deadline_seconds,
+            "process_wait_timeout_seconds": process_wait_timeout_seconds,
+            "cleanup_reserve_seconds": PROCESS_CLEANUP_RESERVE_SECONDS,
+            "process_group_stopped": process_group_stopped,
+        }
+        if launch_begin_epoch_ns is not None:
+            process_metadata["launch_begin_epoch_ns"] = launch_begin_epoch_ns
+        if launch_begin_monotonic_ns is not None:
+            process_metadata["launch_begin_monotonic_ns"] = launch_begin_monotonic_ns
+        if completion_epoch_ns is not None:
+            process_metadata["process_completion_epoch_ns"] = completion_epoch_ns
+        if completion_monotonic_ns is not None:
+            process_metadata["process_completion_monotonic_ns"] = completion_monotonic_ns
+        if launch_begin_monotonic_ns is not None and completion_monotonic_ns is not None:
+            process_metadata["process_wallclock_seconds"] = (
+                completion_monotonic_ns - launch_begin_monotonic_ns
+            ) / 1_000_000_000
+        if cleanup_completed_epoch_ns is not None:
+            process_metadata["cleanup_completed_epoch_ns"] = cleanup_completed_epoch_ns
+        if cleanup_completed_monotonic_ns is not None:
+            process_metadata["cleanup_completed_monotonic_ns"] = cleanup_completed_monotonic_ns
+        if launch_begin_monotonic_ns is not None and cleanup_completed_monotonic_ns is not None:
+            process_metadata["launch_to_cleanup_seconds"] = (
+                cleanup_completed_monotonic_ns - launch_begin_monotonic_ns
+            ) / 1_000_000_000
+        process_metadata["pre_manifest_wallclock_seconds"] = (
+            time.monotonic() - client_start_monotonic
+        )
+
+    atomic_text(OUTPUT, stdout_text)
+    atomic_text(STDERR, stderr_text)
+    manifest["stdout_sha256"] = sha256_file(OUTPUT)
+    manifest["stderr_sha256"] = sha256_file(STDERR)
+    if (
+        client_deadline_monotonic is not None
+        and time.monotonic() >= client_deadline_monotonic
+        and error_message is None
+    ):
+        timed_out = True
+        error_message = "PHPBench exceeded its whole-client deadline"
+    if INTERRUPTED_BY is not None and error_message is None:
+        error_message = "PHPBench client received signal %s during cleanup" % INTERRUPTED_BY
+    if error_message is not None:
+        atomic_text(ERROR, error_message + "\n")
+        manifest["status"] = "invalid"
+        manifest["error"] = error_message
+        print("PHPBench benchmark failed: %s" % error_message, file=sys.stderr)
+    else:
+        process_metadata["php_configuration_verified"] = True
+    process_metadata["pre_manifest_wallclock_seconds"] = (
+        time.monotonic() - client_start_monotonic
+    )
+    process_metadata["timed_out"] = timed_out
+    manifest["process"] = process_metadata
+    atomic_json(MANIFEST, manifest)
+    if (
+        client_deadline_monotonic is not None
+        and time.monotonic() >= client_deadline_monotonic
+        and manifest["status"] == "valid"
+    ):
+        timed_out = True
+        error_message = "PHPBench exceeded its whole-client deadline during finalization"
+        manifest["status"] = "invalid"
+        manifest["error"] = error_message
+        manifest["process"]["timed_out"] = True
+        atomic_text(ERROR, error_message + "\n")
+        atomic_json(MANIFEST, manifest)
+    if INTERRUPTED_BY is not None and manifest["status"] == "valid":
+        error_message = "PHPBench client received signal %s during finalization" % INTERRUPTED_BY
+        manifest["status"] = "invalid"
+        manifest["error"] = error_message
+        manifest["process"]["interrupted"] = True
+        manifest["process"]["signal"] = INTERRUPTED_BY
+        atomic_text(ERROR, error_message + "\n")
+        atomic_json(MANIFEST, manifest)
+    FINALIZATION_IN_PROGRESS = False
+    return 0 if error_message is None else 1
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as exc:
+        print("PHPBench client could not start: %s" % exc, file=sys.stderr)
+        sys.exit(1)

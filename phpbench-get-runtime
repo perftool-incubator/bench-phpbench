@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+# -*- mode: python; indent-tabs-mode: nil; python-indent-level: 4 -*-
+# vim: autoindent tabstop=4 shiftwidth=4 expandtab softtabstop=4 filetype=python
+
+"""Report the conservative roadblock duration for one PHPBench sample."""
+
+import sys
+
+from phpbench_common import expected_runtime_seconds, parse_parameters
+
+
+def main(argv):
+    parameters = parse_parameters(argv)
+    print(expected_runtime_seconds(parameters["iterations"]))
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except Exception as exc:
+        print("PHPBench runtime calculation failed: %s" % exc, file=sys.stderr)
+        sys.exit(1)

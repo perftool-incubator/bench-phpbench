@@ -1,0 +1,124 @@
+Starting the benchmark with 2000 iterations.
+
+Test [test_arithmetic] enabled.
+Test [test_rand] enabled.
+Test [test_mt_rand] enabled.
+Test [test_switch] enabled.
+Test [test_sha1] enabled.
+Test [test_chr_hardcoded] enabled.
+Test [test_microtime] enabled.
+Test [test_time] enabled.
+Test [test_chr_fixed] enabled.
+Test [test_md5] enabled.
+Test [test_crc32] enabled.
+Test [test_foreach] enabled.
+Test [test_is_array] enabled.
+Test [test_is_object] enabled.
+Test [test_chr_var] enabled.
+Test [test_empty] enabled.
+Test [test_unordered_functions] enabled.
+Test [test_isset] enabled.
+Test [test_ordered_functions_references] enabled.
+Test [test_do_while_break] enabled.
+Test [test_strlen] enabled.
+Test [test_do_while] enabled.
+Test [test_array_operators] enabled.
+Test [test_compare_unstrict] enabled.
+Test [test_compare_false] enabled.
+Test [test_compare_strict] enabled.
+Test [test_compare] enabled.
+Test [test_while] enabled.
+Test [test_if_constant] enabled.
+Test [test_bitwise] enabled.
+Test [test_line] enabled.
+Test [test_ord] enabled.
+Test [test_compare_invert] enabled.
+Test [test_ordered_functions] enabled.
+Test [test_increment] enabled.
+Test [test_references] enabled.
+Test [test_ereg] enabled.
+Test [test_get_class] enabled.
+Test [test_local_object_assign] enabled.
+Test [test_variable_variables] enabled.
+Test [test_local_hash_assign] enabled.
+Test [test_preg_match] enabled.
+Test [test_string_append] enabled.
+Test [test_local_float_assign] enabled.
+Test [test_constants] enabled.
+Test [test_local_integer_assign] enabled.
+Test [test_local_boolean_assign] enabled.
+Test [test_local_string_assign] enabled.
+Test [test_global_string_assign] enabled.
+Test [test_local_array_assign] enabled.
+Test [test_is_type] enabled.
+Test [test_global_scalar_assign] enabled.
+Test [test_local_scalar_assign] enabled.
+Test [test_empty_loop] enabled.
+Test [test_comment_loop] enabled.
+Test [test_casting] enabled.
+
+                   test_arithmetic	   0.0001 seconds.
+              test_array_operators	   0.0007 seconds.
+                      test_bitwise	   0.0001 seconds.
+                      test_casting	   0.0035 seconds.
+                    test_chr_fixed	   0.0013 seconds.
+                test_chr_hardcoded	   0.0013 seconds.
+                      test_chr_var	   0.0018 seconds.
+                 test_comment_loop	   0.0005 seconds.
+                      test_compare	   0.0004 seconds.
+                test_compare_false	   0.0000 seconds.
+               test_compare_invert	   0.0000 seconds.
+               test_compare_strict	   0.0000 seconds.
+             test_compare_unstrict	   0.0001 seconds.
+                    test_constants	   0.0002 seconds.
+                        test_crc32	   0.0002 seconds.
+                     test_do_while	   0.0015 seconds.
+               test_do_while_break	   0.0004 seconds.
+                        test_empty	   0.0000 seconds.
+                   test_empty_loop	   0.0005 seconds.
+                         test_ereg	   0.0008 seconds.
+                      test_foreach	   0.0025 seconds.
+                    test_get_class	   0.0001 seconds.
+         test_global_scalar_assign	   0.0004 seconds.
+         test_global_string_assign	   0.0008 seconds.
+                  test_if_constant	   0.0001 seconds.
+                    test_increment	   0.0001 seconds.
+                     test_is_array	   0.0000 seconds.
+                    test_is_object	   0.0000 seconds.
+                      test_is_type	   0.0001 seconds.
+                        test_isset	   0.0000 seconds.
+                         test_line	   0.0000 seconds.
+           test_local_array_assign	   0.0008 seconds.
+         test_local_boolean_assign	   0.0001 seconds.
+           test_local_float_assign	   0.0001 seconds.
+            test_local_hash_assign	   0.0002 seconds.
+         test_local_integer_assign	   0.0001 seconds.
+          test_local_object_assign	   0.0001 seconds.
+          test_local_scalar_assign	   0.0002 seconds.
+          test_local_string_assign	   0.0006 seconds.
+                          test_md5	   0.0005 seconds.
+                    test_microtime	   0.0014 seconds.
+                      test_mt_rand	   0.0001 seconds.
+                          test_ord	   0.0029 seconds.
+            test_ordered_functions	   0.0023 seconds.
+ test_ordered_functions_references	   0.0028 seconds.
+                   test_preg_match	   0.0006 seconds.
+                         test_rand	   0.0001 seconds.
+                   test_references	   0.0001 seconds.
+                         test_sha1	   0.0007 seconds.
+                test_string_append	   0.0005 seconds.
+                       test_strlen	   0.0000 seconds.
+                       test_switch	   0.0012 seconds.
+                         test_time	   0.0002 seconds.
+          test_unordered_functions	   0.0025 seconds.
+           test_variable_variables	   0.0002 seconds.
+                        test_while	   0.0014 seconds.
+
+System     : [host details omitted]
+PHP version: 8.0.30
+PHPBench   : 0.8.1
+Date       : [timestamp omitted]
+Tests      : 56
+Iterations : 2000
+Total time : 0 seconds
+Score      : 539363 (higher is better)

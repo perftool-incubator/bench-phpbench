@@ -1,0 +1,24 @@
+{
+  "rickshaw-benchmark-metadata": {
+    "schema": {
+      "version": "2026.08.11"
+    }
+  },
+  "benchmark": "phpbench",
+  "description": "Runs the pinned PHPBench 0.8.1 native suite directly with the compatibility changes used by the Zathras-selected PTS profile; PHP and the source tree are prepared by Workshop.",
+  "cdm_indexed": true,
+  "cdm_sources": [
+    {
+      "source": "phpbench",
+      "types": [
+        "phpbench-score"
+      ]
+    }
+  ],
+  "output_files": [
+    "phpbench-output.txt",
+    "phpbench-stderr.txt",
+    "phpbench-run-manifest.json",
+    "phpbench-error.txt"
+  ]
+}
