@@ -1,8 +1,9 @@
-# Crucible PHPBench benchmark
+# bench-phpbench
 
 This benchmark runs the PHPBench 0.8.1 source workload directly from a
-Crucible client engine. PHP, the upstream benchmark source, and its reviewed
-compatibility patch are prepared through Workshop. The runtime does not install
+[Crucible](https://github.com/perftool-incubator/crucible) client engine. PHP, the
+upstream benchmark source, and its reviewed compatibility patch are prepared
+through Workshop. The runtime does not install
 or invoke Phoronix Test Suite.
 
 The benchmark is client-only. Each native invocation runs all 56 PHPBench tests
