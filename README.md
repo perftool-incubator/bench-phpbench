@@ -39,5 +39,18 @@ The PHP 8.0.30 Alma 9 probe emitted one compatibility warning from the old
 client retains stderr and rejects failed processes, fatal PHP errors, missing
 tests, duplicate tests, and output/manifest mismatches.
 
+## Userenv compatibility
+
+The Workshop default prepares PHPBench for the selected userenv. Alma 8 and
+RHUI 8 use Python 3.12 for APIs missing from their system Python and install
+`php-json`, which is separate from `php-cli` in those EL8 images. The recipe
+does not explicitly install `coreutils`, avoiding a conflict with RHUI 8's
+base `coreutils-single` package.
+
+A one-sample x86_64 smoke run completed on `alma10`, `alma9`, `fedora43`,
+`fedora44`, `rhubi10`, `rhubi9`, `stream10`, `stream9`, `alma8`, and `rhubi8`.
+This verifies image preparation and benchmark execution on those userenvs; the
+single sample is not equivalent to the three-sample PTS profile.
+
 See [DESIGN.md](DESIGN.md), [VALIDATION.md](VALIDATION.md), and the shared
 [benchmark integration lessons](docs/benchmark-integration-lessons.md).
