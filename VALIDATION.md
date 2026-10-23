@@ -1,14 +1,14 @@
 # Validation record
 
-Status: the current source passed 22 focused tests and schema checks, a fresh
-Workshop build, a full three-sample root Crucible run, and adapter SIGTERM and
-native-timeout lifecycle trials. Details are in the current status section at
-the end of this record. Earlier mechanics runs exposed a CDM aggregation
+Status: the adapter's full-profile and lifecycle acceptance was recorded on
+2026-10-14. The updated Workshop recipe passed 22 focused tests and a
+one-sample x86_64 smoke matrix across ten userenvs on 2026-10-23; that evidence
+is at the end of this record. Earlier mechanics runs exposed a CDM aggregation
 mismatch: its `avg` descriptor divided each sample's native score by the three
 repeated-sample metric IDs. With `sum`, the corrected run's ordinary summary
 preserved the native scores. The subsequent deadline, PHP configuration
 provenance, signal-handoff, and archive-validation changes are covered by the
-current validation evidence below.
+validation sections below.
 
 ## Source and runtime probes completed
 
@@ -135,7 +135,7 @@ Multiplex requirements, and Crucible metadata schemas, respectively. At that
 point these checks had not exercised Workshop's real source stage or a rebuilt
 userenv. The fresh build and SUT run below provide that runtime evidence.
 
-## Current validation status (2026-10-14)
+## Adapter validation status (2026-10-14)
 
 - The current source, including format-2 PHP configuration provenance and
   archive validation before extraction, passed 22 focused unit tests, Python
@@ -162,3 +162,36 @@ userenv. The fresh build and SUT run below provide that runtime evidence.
   cancellation have not been validated.
 - The successful scores document run mechanics and repeatability on one SUT;
   they are not a hardware comparison or performance claim.
+
+## Userenv compatibility smoke matrix (2026-10-23)
+
+The updated default Workshop recipe was exercised through the PATH `crucible`
+wrapper on the same test endpoint used for the bench-stream matrix.
+Each x86_64 run used PHPBench's default 2,000,000 iterations, one sample, CPU
+partitioning disabled, and no tools. All ten userenvs completed image
+preparation, endpoint and engine setup, the PHPBench sample, and result
+indexing:
+
+| Userenv | Result |
+|---|---|
+| `alma10`, `alma9` | Pass |
+| `fedora43`, `fedora44` | Pass |
+| `rhubi10`, `rhubi9` | Pass |
+| `stream10`, `stream9` | Pass |
+| `alma8`, `rhubi8` | Pass after the EL8 package corrections below |
+
+The first Alma 8 attempt built the image but failed the PHP runtime probe
+because the EL8 `php-cli` package did not provide `json_encode()`. The RHUI 8
+attempt stopped earlier because installing `coreutils` conflicted with the
+base image's `coreutils-single`. The Workshop recipe now adds `php-json` only
+for Alma 8 and RHUI 8, keeps the Python 3.12 selection for those userenvs, and
+does not request a redundant `coreutils` package. Both corrected EL8 runs
+passed the complete smoke path.
+The successful retry run IDs were Alma 8 `3ac88a75-acc8-4475-aabb-eaa1febfd509`
+and RHUI 8 `e141ac28-7903-4aa1-b1ff-288db2ea0d62`.
+
+The focused command `python3 -m unittest discover -s tests -p 'test_phpbench.py'`
+passed all 22 tests after these changes; JSON parsing and `git diff --check`
+also passed. This is one-sample compatibility evidence on x86_64. It does not
+repeat the three-sample profile-default acceptance run or establish performance
+results on these userenvs.
