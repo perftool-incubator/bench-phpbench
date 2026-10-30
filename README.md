@@ -42,15 +42,20 @@ tests, duplicate tests, and output/manifest mismatches.
 ## Userenv compatibility
 
 The Workshop default prepares PHPBench for the selected userenv. Alma 8 and
-RHUI 8 use Python 3.12 for APIs missing from their system Python and install
-`php-json`, which is separate from `php-cli` in those EL8 images. The recipe
-does not explicitly install `coreutils`, avoiding a conflict with RHUI 8's
-base `coreutils-single` package.
+RHUI 8 already provide Python 3.12 as `python3` in their base userenv images.
+Installing `python3` in `phpbench_runtime_packages` selected the EL8
+`python36` package and required a Python alternatives/pip override. The
+2026-10-30 smoke experiment removed that package and override; both EL8
+userenvs passed. Their userenv-specific requirement remains for `php-json`,
+which is separate from `php-cli`. The recipe does not explicitly install
+`coreutils`, avoiding a conflict with RHUI 8's base `coreutils-single` package.
 
-A one-sample x86_64 smoke run completed on `alma10`, `alma9`, `fedora43`,
-`fedora44`, `rhubi10`, `rhubi9`, `stream10`, `stream9`, `alma8`, and `rhubi8`.
-This verifies image preparation and benchmark execution on those userenvs; the
-single sample is not equivalent to the three-sample PTS profile.
+The 2026-10-23 one-sample x86_64 smoke matrix completed on `alma10`, `alma9`,
+`fedora43`, `fedora44`, `rhubi10`, `rhubi9`, `stream10`, `stream9`, `alma8`,
+and `rhubi8`. The additional 2026-10-30 EL8 runs verify the recipe without
+the Python package and override. These smoke checks verify image preparation
+and benchmark execution; they are not equivalent to the three-sample PTS
+profile.
 
 See [DESIGN.md](DESIGN.md), [VALIDATION.md](VALIDATION.md), and the shared
 [benchmark integration lessons](docs/benchmark-integration-lessons.md).

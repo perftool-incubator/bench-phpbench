@@ -90,10 +90,17 @@ PHPBench's 2026 x86_64 smoke matrix found two EL8 packaging issues: Alma 8's PHP
 CLI needed `php-json` for `json_encode()`, and RHUI 8's base `coreutils-single`
 conflicted with explicitly installing `coreutils`. Keep `php-json` in the
 `alma8`/`rhubi8` Workshop override and avoid reinstalling `coreutils` there.
-EL8 also needs PHPBench's Python 3.12 selection because its code uses APIs
-missing from Python 3.6. Verify package resolution and an actual benchmark
-sample on each target; a successful image build alone does not prove runtime
-compatibility.
+The Alma 8 and RHUI 8 base images already expose Python 3.12 as `python3`.
+Requesting the DNF `python3` package selected `python36` and changed that
+default. A 2026-10-30 PHPBench follow-up removed `python3` from
+`phpbench_runtime_packages` and dropped `phpbench_python312_default`, including
+its alternatives and pip installs. Both Stage 7 builds and one-sample x86_64
+runs completed and indexed (Alma 8 `241b32b0-a85e-4a1f-9695-cec199d75e69`,
+RHUI 8 `efc2de4f-af07-46b8-9284-b191a812d142`). The explicit Python override
+is unnecessary on these tested images; the `php-json` exception still applies.
+Keep checking package resolution and a real sample on each target because an
+image build alone does not prove runtime compatibility. These smoke results do
+not qualify performance.
 
 Workshop builders often run as root. Keep destructive staging/install paths
 fixed to the benchmark's intended directory; do not let an ambient environment
