@@ -195,3 +195,26 @@ passed all 22 tests after these changes; JSON parsing and `git diff --check`
 also passed. This is one-sample compatibility evidence on x86_64. It does not
 repeat the three-sample profile-default acceptance run or establish performance
 results on these userenvs.
+
+## EL8 inherited Python validation (2026-10-30)
+
+To check whether the EL8 Python override was still needed, the Workshop recipe
+removed `python3` from `phpbench_runtime_packages` and removed
+`phpbench_python312_default` from the Alma 8 and RHUI 8 userenv requirements.
+The separate `phpbench_el8_php_json` requirement remains because EL8's
+`php-cli` does not provide `json_encode()` without `php-json`. Both Stage 7
+builds completed with only that EL8-specific package requirement; neither
+installed `python36` nor applied the Python alternatives/pip override.
+
+Both x86_64 smoke runs used one sample, 2,000,000 PHPBench iterations, disabled
+CPU partitioning, and no tools. They completed and indexed successfully:
+
+| Userenv | Run ID | Sample duration | PHPBench score |
+|---|---|---:|---:|
+| `alma8` | `241b32b0-a85e-4a1f-9695-cec199d75e69` | 40.883 s | 491506 |
+| `rhubi8` | `efc2de4f-af07-46b8-9284-b191a812d142` | 40.491 s | 494272 |
+
+This confirms the tested EL8 userenvs can use their inherited Python 3.12 without
+the PHPBench-specific Python package and override. The EL8 `php-json` package
+exception is still required. These one-sample results are compatibility evidence,
+not the three-sample profile-default performance acceptance run.

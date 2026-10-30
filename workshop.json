@@ -22,7 +22,6 @@
         "phpbench_runtime_packages",
         "phpbench_build_files",
         "phpbench_el8_php_json",
-        "phpbench_python312_default",
         "phpbench_upstream_source"
       ]
     }
@@ -35,7 +34,6 @@
         "packages": [
           "patch",
           "php-cli",
-          "python3",
           "rpm",
           "tar",
           "gzip"
@@ -68,17 +66,6 @@
       "distro_info": {
         "packages": [
           "php-json"
-        ]
-      }
-    },
-    {
-      "name": "phpbench_python312_default",
-      "type": "manual",
-      "manual_info": {
-        "commands": [
-          "alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 312",
-          "alternatives --set python3 /usr/bin/python3.12",
-          "python3 -m pip install fabric invoke redis hiredis jsonschema"
         ]
       }
     },
